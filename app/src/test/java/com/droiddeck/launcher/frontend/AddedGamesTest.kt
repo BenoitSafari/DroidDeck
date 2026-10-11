@@ -22,4 +22,19 @@ class AddedGamesTest {
         // Loose game folders at the library root are never Steam's.
         assertEquals(emptySet<String>(), AddedGames.steamInstallDirs(library))
     }
+
+    @Test fun aGameNamedCrashIsNotMistakenForACrashHandler() {
+        val game = tmp.newFolder("crash_bandicoot_nsane_trilogy")
+        val exe = File(game, "CrashBandicootNSaneTrilogy.exe").apply { writeText("x") }
+        File(game, "UnityCrashHandler64.exe").writeText("x")
+        File(game, "CrashReportClient.exe").writeText("x")
+        assertEquals(listOf(exe), AddedGames.candidates(game))
+    }
+
+    @Test fun anUnrealGameWithoutItsLauncherIsFoundInBinaries() {
+        val game = tmp.newFolder("crash_bandicoot_4")
+        val exe = File(game, "Lava/Binaries/Win64/CrashBandicoot4.exe").apply { parentFile!!.mkdirs(); writeText("x") }
+        File(game, "Engine/Binaries/ThirdParty").mkdirs()
+        assertEquals(listOf(exe), AddedGames.candidates(game))
+    }
 }
