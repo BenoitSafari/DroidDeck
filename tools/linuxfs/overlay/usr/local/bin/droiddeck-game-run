@@ -1,0 +1,186 @@
+#!/usr/bin/python3
+"""Starts a game added to the library with its Proton, without the Steam client (Games > Desktop Mode).
+
+Usage: droiddeck-game-run [--start-in=<dir>] [--launch-options=<text>] <shortcut appid> <exe> [args...]
+
+The game runs in the prefix the client gives its shortcut (compatdata/<appid>), through the default
+compatibility tool's own launcher and with the launch verb - so droiddeck-game-env applies the
+game's environment and Windows components exactly as when the client starts it. The shortcut's
+Start In and launch options are the game's own (Games > Game options) when given, else what the
+client's shortcuts.vdf has for it.
+"""
+import json
+import os
+import re
+import runpy
+import shlex
+import sys
+
+BIN_DIR = os.path.dirname(os.path.abspath(__file__))
+OWN_LAUNCHER = "droiddeck-proton"
+EXTRA_LAUNCHERS = ("droiddeck-proton-wrap", "bannerlator-proton-wrap")
+ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
+
+
+def say(text):
+    print("droiddeck-game-run: " + text, file=sys.stderr)
+
+
+def steam_root(env):
+    data = env.get("XDG_DATA_HOME") or os.path.join(env.get("HOME", "/root"), ".local", "share")
+    return os.path.join(data, "Steam")
+
+
+def extra_launcher(tools, folder):
+    for name in EXTRA_LAUNCHERS:
+        path = os.path.join(tools, folder, name)
+        if os.path.isfile(path):
+            return path
+    return None
+
+
+def launcher(root, env):
+    """The launcher of a Proton that can run now: the default tool (Components > Proton) when it is
+    one, else Valve's ARM64 depot if the client has fetched it, else a Proton installed from
+    Components (GE-Proton, CachyOS) - which needs no client at all."""
+    tools = os.path.join(root, "compatibilitytools.d")
+    compat = runpy.run_path(os.path.join(BIN_DIR, "steam-compatibility"))
+    own, depots = {}, {}
+    for name, sources in compat["OWN_TOOLS"]:
+        path = os.path.join(tools, name, OWN_LAUNCHER)
+        # Our own tool is registered before its depot exists; without the depot it starts nothing.
+        depot = compat["find_source"](root, sources) if os.path.isfile(path) else None
+        if depot:
+            own[name] = path
+            depots.setdefault(os.path.basename(depot), path)
+    home = os.path.join(env.get("HOME", "/root"), ".local/share/droiddeck-compat")
+    state, request = {}, {}
+    for name in ("state.json", "request.json"):
+        try:
+            with open(os.path.join(home, name), encoding="utf-8") as source:
+                loaded = json.load(source)
+        except (OSError, ValueError):
+            continue
+        if isinstance(loaded, dict):
+            if name == "state.json":
+                state = loaded
+            else:
+                request = loaded
+    # A pick in Components the client has not applied yet - or never will, with no client installed.
+    try:
+        pending = int(request.get("seq", 0)) > int(state.get("applied", 0)) and isinstance(request.get("dir"), str)
+    except (TypeError, ValueError):
+        pending = False
+    if pending:
+        path = depots.get(request["dir"]) if request.get("valve") else extra_launcher(tools, request["dir"])
+        if path:
+            return path
+    default = state.get("default")
+    if isinstance(default, str) and default:
+        if default in own:
+            return own[default]
+        for tool in state.get("tools") or []:
+            if isinstance(tool, dict) and tool.get("name") == default and not tool.get("valve") and tool.get("dir"):
+                path = extra_launcher(tools, str(tool["dir"]))
+                if path:
+                    return path
+    if own:
+        return next(iter(own.values()))
+    try:
+        folders = sorted(os.listdir(tools), reverse=True)
+    except OSError:
+        folders = []
+    for folder in folders:
+        path = extra_launcher(tools, folder)
+        if path:
+            return path
+    return None
+
+
+def shortcut(root, app_id):
+    """The client's own record of this shortcut, for what the user edited there."""
+    try:
+        shortcuts = runpy.run_path(os.path.join(BIN_DIR, "droiddeck-steam-shortcuts"))
+        account = shortcuts["account_dir"](root)
+        if not account:
+            return {}
+        with open(os.path.join(account, "config", "shortcuts.vdf"), "rb") as source:
+            entries = shortcuts["parse"](source.read())
+    except (OSError, ValueError, IndexError, KeyError):
+        return {}
+    for group in entries.values():
+        if not isinstance(group, dict):
+            continue
+        for entry in group.values():
+            if isinstance(entry, dict) and isinstance(entry.get("appid"), int) and entry["appid"] % 2**32 == app_id:
+                return entry
+    return {}
+
+
+def launch_options(text):
+    """Steam's launch options: `VAR=value %command% args`, or just arguments. Returns (env, args)."""
+    try:
+        words = shlex.split(text or "")
+    except ValueError:
+        say("launch options not understood, left out: %s" % text)
+        return {}, []
+    if "%command%" not in words:
+        return {}, words
+    at = words.index("%command%")
+    env = {}
+    for word in words[:at]:
+        if ASSIGNMENT.match(word):
+            name, value = word.split("=", 1)
+            env[name] = value
+        elif word != "env":
+            say("launch options: '%s' before %%command%% is not run here" % word)
+    return env, words[at + 1:]
+
+
+def unquoted(value):
+    return value.strip().strip('"') if isinstance(value, str) else ""
+
+
+def main():
+    argv, chosen = sys.argv[1:], {}
+    while argv and argv[0].startswith("--"):
+        name, _, value = argv.pop(0)[2:].partition("=")
+        chosen[name] = value
+    if len(argv) < 2 or set(chosen) - {"start-in", "launch-options"} \
+            or not re.fullmatch(r"[1-9][0-9]{0,9}", argv[0]) or int(argv[0]) >= 2**32:
+        print(__doc__, file=sys.stderr)
+        return 64
+    app_id, exe, args = int(argv[0]), argv[1], argv[2:]
+    if not os.path.isfile(exe):
+        say("%s is missing; is the Games folder still there?" % exe)
+        return 66
+    env = os.environ.copy()
+    root = steam_root(env)
+    tool = launcher(root, env)
+    if tool is None:
+        say("no Proton to run it with: install one in Components > Proton, or start Steam once so it fetches its own")
+        return 69
+    entry = shortcut(root, app_id)
+    extra_env, extra_args = launch_options(chosen.get("launch-options", entry.get("LaunchOptions")))
+    start = chosen.get("start-in") or unquoted(entry.get("StartDir"))
+    if not os.path.isdir(start):
+        start = os.path.dirname(exe)
+    prefix = os.path.join(root, "steamapps", "compatdata", str(app_id))
+    os.makedirs(prefix, exist_ok=True)
+    env.update(extra_env)
+    env.update({
+        "STEAM_COMPAT_CLIENT_INSTALL_PATH": root,
+        "STEAM_COMPAT_DATA_PATH": prefix,
+        "STEAM_COMPAT_APP_ID": str(app_id),
+        "SteamAppId": str(app_id),
+        # Proton names its log after this one (PROTON_LOG), and writes none without it.
+        "SteamGameId": str(app_id),
+    })
+    command = [tool, "waitforexitandrun", exe] + args + extra_args
+    say("%s in %s with %s (prefix %s)" % (os.path.basename(exe), start, os.path.basename(os.path.dirname(tool)), app_id))
+    os.chdir(start)
+    os.execve(tool, command, env)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

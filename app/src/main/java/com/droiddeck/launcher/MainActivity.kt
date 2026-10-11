@@ -476,6 +476,26 @@ class MainActivity : ComponentActivity() {
             android.widget.Toast.makeText(this, R.string.main_wait_install_game, android.widget.Toast.LENGTH_SHORT).show()
             return false
         }
+        val desktopArgs = com.droiddeck.launcher.frontend.DesktopMode.launchArgs(this, game)
+            ?.takeIf { com.droiddeck.launcher.frontend.DesktopMode.enabled(this, game) }
+        if (desktopArgs != null) {
+            // Desktop Mode: the game under gamescope with its Proton, no client. Any session that is
+            // running is in the way - there is no client to hand the game to.
+            if (SessionState.running) {
+                android.widget.Toast.makeText(this, R.string.game_link_session_busy, android.widget.Toast.LENGTH_LONG).show()
+                return true
+            }
+            if (!com.droiddeck.launcher.frontend.DesktopMode.protonReady(this)) {
+                android.widget.Toast.makeText(this, R.string.desktop_mode_no_proton, android.widget.Toast.LENGTH_LONG).show()
+                return true
+            }
+            Library.flatpakNames[com.droiddeck.launcher.frontend.DesktopMode.prefixId(game)] = game.name
+            return startSession(Intent(this, SessionActivity::class.java)
+                .putExtra(SessionActivity.EXTRA_RETURN_HOME, returnHome)
+                .putExtra(SessionService.EXTRA_MODE, SessionService.MODE_RUN)
+                .putExtra(SessionService.EXTRA_PROGRAM, com.droiddeck.launcher.frontend.DesktopMode.LAUNCHER)
+                .putExtra(SessionService.EXTRA_PROGRAM_ARGS, desktopArgs))
+        }
         if (SessionState.running) {
             if (SessionState.mode != SessionService.MODE_STEAM || SessionState.stopRequested) {
                 android.widget.Toast.makeText(this, R.string.game_link_session_busy, android.widget.Toast.LENGTH_LONG).show()
@@ -617,6 +637,11 @@ class MainActivity : ComponentActivity() {
                             }
                         },
                         onGameShortcut = { g -> com.droiddeck.launcher.frontend.GameShortcuts.pin(this, g) },
+                        onGameExe = { folder, path -> SessionPrefs.setAddedGameExe(this, folder.path, path); refreshAddedGames(); refresh() },
+                        onPickGameExe = { folder ->
+                            pendingAddedGame = folder.path
+                            pickAddedGameExe.launch(InAppFilePicker.buildIntent(this, listOf("exe"), getString(R.string.main_pick_game_exe), folder.path))
+                        },
                         onExportGameFile = { g -> pickGameExport(g) },
                         onSyncGameFiles = { pickGameExport(null) },
                         onAddGameExe = { path -> addGameExe(path) },

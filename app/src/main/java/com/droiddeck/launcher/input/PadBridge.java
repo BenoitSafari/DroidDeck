@@ -119,6 +119,69 @@ public final class PadBridge {
         return slot >= 0 && slot < SLOTS ? slotControllers.get(slot) : activeControllerId;
     }
 
+    /**
+     * Controls > Button mapping, for the physical controllers: button id to target id, as
+     * ControllerPrefs stores it. Outside a Steam session only - there Steam Input owns the layout,
+     * and both applied would swap a button twice.
+     */
+    private volatile java.util.Map<String, String> physicalMapping = java.util.Collections.emptyMap();
+    /** Per player slot: what remapped buttons hold on the d-pad and triggers, which the pad's own axes also write. */
+    private final boolean[] mappedUp = new boolean[SLOTS], mappedRight = new boolean[SLOTS],
+            mappedDown = new boolean[SLOTS], mappedLeft = new boolean[SLOTS],
+            mappedLeftTrigger = new boolean[SLOTS], mappedRightTrigger = new boolean[SLOTS];
+    /** Per player slot: a remapped analog trigger, as the button it has become. */
+    private final boolean[] leftTriggerHeld = new boolean[SLOTS], rightTriggerHeld = new boolean[SLOTS];
+
+    public void setPhysicalMapping(java.util.Map<String, String> mapping) {
+        java.util.Map<String, String> changed = new java.util.HashMap<>();
+        if (mapping != null) for (java.util.Map.Entry<String, String> e : mapping.entrySet()) {
+            if (!e.getKey().equals(e.getValue())) changed.put(e.getKey(), e.getValue());
+        }
+        physicalMapping = changed;
+    }
+
+    /** The target [button] sends, or itself; null when it is mapped to nothing. */
+    private String mapped(String button) {
+        java.util.Map<String, String> mapping = physicalMapping;
+        if (mapping.isEmpty() || com.droiddeck.launcher.session.SessionService.MODE_STEAM.equals(SessionState.INSTANCE.getMode())) return button;
+        String target = mapping.get(button);
+        if (target == null) return button;
+        return "off".equals(target) ? null : target;
+    }
+
+    /** Presses or releases what a button is mapped to, on the pad of player [slot]. */
+    private void applyTarget(int slot, String target, boolean pressed) {
+        if (target == null) return;
+        PadState pad = stateFor(slot);
+        switch (target) {
+            case "a": pad.press(PadState.A, pressed); break;
+            case "b": pad.press(PadState.B, pressed); break;
+            case "x": pad.press(PadState.X, pressed); break;
+            case "y": pad.press(PadState.Y, pressed); break;
+            case "lb": pad.press(PadState.LB, pressed); break;
+            case "rb": pad.press(PadState.RB, pressed); break;
+            case "select": pad.press(PadState.SELECT, pressed); break;
+            case "start": pad.press(PadState.START, pressed); break;
+            case "l3": pad.press(PadState.L3, pressed); break;
+            case "r3": pad.press(PadState.R3, pressed); break;
+            case "guide": pad.press(PadState.GUIDE, pressed); break;
+            case "lt": mappedLeftTrigger[slot] = pressed; pad.leftTrigger = pressed ? 1f : 0f; break;
+            case "rt": mappedRightTrigger[slot] = pressed; pad.rightTrigger = pressed ? 1f : 0f; break;
+            case "up": mappedUp[slot] = pressed; pad.up = pressed; break;
+            case "right": mappedRight[slot] = pressed; pad.right = pressed; break;
+            case "down": mappedDown[slot] = pressed; pad.down = pressed; break;
+            case "left": mappedLeft[slot] = pressed; pad.left = pressed; break;
+            default: break;
+        }
+    }
+
+    /** Lets go of what player [slot]'s remapped buttons were holding. */
+    private void clearMapped(int slot) {
+        mappedUp[slot] = mappedRight[slot] = mappedDown[slot] = mappedLeft[slot] = false;
+        mappedLeftTrigger[slot] = mappedRightTrigger[slot] = false;
+        leftTriggerHeld[slot] = rightTriggerHeld[slot] = false;
+    }
+
     public PadBridge(File fakeInputDir) {
         this.fakeInputDir = fakeInputDir;
         writer = new FakeInputWriter(fakeInputDir.getAbsolutePath(), 0);
@@ -290,29 +353,36 @@ public final class PadBridge {
         PadState pad = stateFor(slot);
         boolean pressed = event.getAction() == KeyEvent.ACTION_DOWN;
         switch (event.getKeyCode()) {
-            case KeyEvent.KEYCODE_BUTTON_A: pad.press(0, pressed); break;
-            case KeyEvent.KEYCODE_BUTTON_B: pad.press(1, pressed); break;
-            case KeyEvent.KEYCODE_BUTTON_X: pad.press(2, pressed); break;
-            case KeyEvent.KEYCODE_BUTTON_Y: pad.press(3, pressed); break;
-            case KeyEvent.KEYCODE_BUTTON_L1: pad.press(4, pressed); break;
-            case KeyEvent.KEYCODE_BUTTON_R1: pad.press(5, pressed); break;
-            case KeyEvent.KEYCODE_BUTTON_SELECT:
+            case KeyEvent.KEYCODE_BUTTON_A: applyTarget(slot, mapped("a"), pressed); break;
+            case KeyEvent.KEYCODE_BUTTON_B: applyTarget(slot, mapped("b"), pressed); break;
+            case KeyEvent.KEYCODE_BUTTON_X: applyTarget(slot, mapped("x"), pressed); break;
+            case KeyEvent.KEYCODE_BUTTON_Y: applyTarget(slot, mapped("y"), pressed); break;
+            case KeyEvent.KEYCODE_BUTTON_L1: applyTarget(slot, mapped("lb"), pressed); break;
+            case KeyEvent.KEYCODE_BUTTON_R1: applyTarget(slot, mapped("rb"), pressed); break;
+            case KeyEvent.KEYCODE_BUTTON_SELECT: {
                 // Optionally (Setup → Controller) the physical Select button opens the Steam menu
                 // instead of View/Select: on some handhelds it sits next to the Steam button.
-                if (selectSteam) pad.press(PadState.GUIDE, pressed);
-                else pad.press(6, pressed);
+                String target = mapped("select");
+                if (selectSteam && "select".equals(target)) pad.press(PadState.GUIDE, pressed);
+                else applyTarget(slot, target, pressed);
                 break;
-            case KeyEvent.KEYCODE_BACK: pad.press(6, pressed); break;
+            }
+            case KeyEvent.KEYCODE_BACK: applyTarget(slot, mapped("select"), pressed); break;
             case KeyEvent.KEYCODE_BUTTON_START:
-            case KeyEvent.KEYCODE_MENU: pad.press(7, pressed); break;
+            case KeyEvent.KEYCODE_MENU: applyTarget(slot, mapped("start"), pressed); break;
             case KeyEvent.KEYCODE_BUTTON_THUMBL: pad.press(8, pressed); break;
             case KeyEvent.KEYCODE_BUTTON_THUMBR: pad.press(9, pressed); break;
             // The client's own in-game menu is opened by this one; the interposer publishes it as
             // BTN_MODE, which SDL reports as the "guide" button.
             case KeyEvent.KEYCODE_BUTTON_MODE:
             case KeyEvent.KEYCODE_HOME: pad.press(PadState.GUIDE, pressed); break;
-            case KeyEvent.KEYCODE_BUTTON_L2: pad.leftTrigger = pressed ? 1f : 0f; break;
-            case KeyEvent.KEYCODE_BUTTON_R2: pad.rightTrigger = pressed ? 1f : 0f; break;
+            // A trigger left as itself keeps its analog value (onMotionEvent); remapped, it is a button.
+            case KeyEvent.KEYCODE_BUTTON_L2:
+                if ("lt".equals(mapped("lt"))) pad.leftTrigger = pressed ? 1f : 0f;
+                break;
+            case KeyEvent.KEYCODE_BUTTON_R2:
+                if ("rt".equals(mapped("rt"))) pad.rightTrigger = pressed ? 1f : 0f;
+                break;
             case KeyEvent.KEYCODE_DPAD_UP: pad.up = pressed; break;
             case KeyEvent.KEYCODE_DPAD_RIGHT: pad.right = pressed; break;
             case KeyEvent.KEYCODE_DPAD_DOWN: pad.down = pressed; break;
@@ -347,14 +417,27 @@ public final class PadBridge {
         // Some pads only report the triggers on BRAKE/GAS.
         if (lt == 0f) lt = event.getAxisValue(MotionEvent.AXIS_BRAKE);
         if (rt == 0f) rt = event.getAxisValue(MotionEvent.AXIS_GAS);
-        pad.leftTrigger = lt;
-        pad.rightTrigger = rt;
+        String leftTarget = mapped("lt"), rightTarget = mapped("rt");
+        if ("lt".equals(leftTarget)) {
+            pad.leftTrigger = Math.max(lt, mappedLeftTrigger[slot] ? 1f : 0f);
+        } else {
+            boolean held = lt > 0.5f;
+            if (held != leftTriggerHeld[slot]) { leftTriggerHeld[slot] = held; applyTarget(slot, leftTarget, held); }
+            pad.leftTrigger = mappedLeftTrigger[slot] ? 1f : 0f;
+        }
+        if ("rt".equals(rightTarget)) {
+            pad.rightTrigger = Math.max(rt, mappedRightTrigger[slot] ? 1f : 0f);
+        } else {
+            boolean held = rt > 0.5f;
+            if (held != rightTriggerHeld[slot]) { rightTriggerHeld[slot] = held; applyTarget(slot, rightTarget, held); }
+            pad.rightTrigger = mappedRightTrigger[slot] ? 1f : 0f;
+        }
         float hatX = event.getAxisValue(MotionEvent.AXIS_HAT_X);
         float hatY = event.getAxisValue(MotionEvent.AXIS_HAT_Y);
-        pad.up = hatY < -0.5f;
-        pad.right = hatX > 0.5f;
-        pad.down = hatY > 0.5f;
-        pad.left = hatX < -0.5f;
+        pad.up = hatY < -0.5f || mappedUp[slot];
+        pad.right = hatX > 0.5f || mappedRight[slot];
+        pad.down = hatY > 0.5f || mappedDown[slot];
+        pad.left = hatX < -0.5f || mappedLeft[slot];
         if (Math.max(Math.max(Math.abs(pad.leftX), Math.abs(pad.leftY)), Math.max(Math.abs(pad.rightX), Math.abs(pad.rightY))) > 0.5f
                 || lt > 0.5f || rt > 0.5f || pad.up || pad.right || pad.down || pad.left) {
             notePlayerInput();
@@ -410,6 +493,7 @@ public final class PadBridge {
      * session drawer opened), so a button or stick held at that moment is not left down in it.
      */
     public synchronized void releaseAll() {
+        for (int slot = 0; slot < SLOTS; slot++) clearMapped(slot);
         state.clear();
         publish();
         for (int slot = 1; slot < SLOTS; slot++) {
@@ -515,6 +599,7 @@ public final class PadBridge {
         Log.i(TAG, "player " + (slot + 1) + " (id " + owners[slot] + ") left");
         owners[slot] = NO_CONTROLLER;
         slotControllers.set(slot, NO_CONTROLLER);
+        clearMapped(slot);
         if (slot == 0) {
             state.clear();
             publish();

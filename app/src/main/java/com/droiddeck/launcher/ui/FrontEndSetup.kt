@@ -474,6 +474,14 @@ internal fun LaunchSettings(s: FrontEndState, a: FrontEndActions, host: MenuHost
     val wincompKey = game?.takeIf { it.library == com.droiddeck.launcher.frontend.Library.ADDED || it.appId > 0 }?.profileKey
     var wincompOpen by remember(wincompKey) { mutableStateOf<Boolean?>(null) }
     val wincompPicks = remember(wincompKey, wincompOpen) { wincompKey?.let { com.droiddeck.launcher.session.WinComponents.picks(context, it) }.orEmpty() }
+    // Game options: the executable an added game starts and, for Desktop Mode, how it is started.
+    val optionsFolder = game?.takeIf { it.library == com.droiddeck.launcher.frontend.Library.ADDED }?.gameFiles
+    var optionsOpen by remember(game?.gameId) { mutableStateOf(false) }
+    // Desktop Mode: this game with its Proton and no client (frontend/DesktopMode). Added games only.
+    val desktopGame = game?.takeIf(com.droiddeck.launcher.frontend.DesktopMode::available)
+    var desktopMode by remember(desktopGame?.gameId) {
+        mutableStateOf(desktopGame != null && com.droiddeck.launcher.frontend.DesktopMode.enabled(context, desktopGame))
+    }
     val cards = buildList<@Composable (Modifier) -> Unit> {
         add { m ->
             val back = stringResource(R.string.hop_from_games)
@@ -509,7 +517,30 @@ internal fun LaunchSettings(s: FrontEndState, a: FrontEndActions, host: MenuHost
                 "card:wincomp", m,
             ) { wincompOpen = inputMode.inputMode == androidx.compose.ui.input.InputMode.Keyboard }
         }
+        if (game != null && optionsFolder != null) add { m ->
+            SettingCard(
+                stringResource(R.string.game_options_title),
+                game.guestExe?.substringAfterLast('/') ?: stringResource(R.string.game_options_card_hint),
+                "card:gameoptions", m,
+            ) { optionsOpen = true }
+        }
+        if (desktopGame != null) add { m ->
+            SettingCard(
+                stringResource(R.string.desktop_mode_title),
+                stringResource(if (desktopMode) R.string.desktop_mode_on else R.string.desktop_mode_off),
+                "card:desktopmode", m,
+            ) {
+                desktopMode = !desktopMode
+                com.droiddeck.launcher.frontend.DesktopMode.set(context, desktopGame, desktopMode)
+                if (desktopMode && !com.droiddeck.launcher.frontend.DesktopMode.protonReady(context)) {
+                    android.widget.Toast.makeText(context, R.string.desktop_mode_no_proton, android.widget.Toast.LENGTH_LONG).show()
+                }
+            }
+        }
     }
+    if (optionsOpen && game != null && optionsFolder != null) GameOptionsDialog(
+        game, optionsFolder, onExe = a.onGameExe, onPickExe = a.onPickGameExe,
+    ) { optionsOpen = false }
     val opened = wincompOpen
     if (opened != null && wincompKey != null && game != null) WinComponentsDialog(
         wincompKey, game.name, game.gameFiles, opened, compat = game.protonPrefix,

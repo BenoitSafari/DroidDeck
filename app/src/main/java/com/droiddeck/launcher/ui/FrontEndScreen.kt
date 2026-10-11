@@ -156,6 +156,9 @@ class FrontEndActions(
     val onPlayDesktopUi: () -> Unit,
     val onSteamGame: (Library.SteamGame) -> Unit,
     val onGameShortcut: (Library.SteamGame) -> Unit = {},
+    /** Game options: an added game's folder and the executable picked for it, or a request to browse for one. */
+    val onGameExe: (java.io.File, String) -> Unit = { _, _ -> },
+    val onPickGameExe: (java.io.File) -> Unit = {},
     val onExportGameFile: (Library.SteamGame) -> Unit = {},
     val onSyncGameFiles: () -> Unit = {},
     /** The Games tab's +: the .exe picked in its dialog, to add as a game. */

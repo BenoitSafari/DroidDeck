@@ -737,7 +737,7 @@
     <string name="ctrl_configure">Configurer</string>
     <string name="ctrl_reset_all">Réinitialiser la manette</string>
     <string name="ctrl_reset_all_hint">Restaurer tous les paramètres et dispositions de la manette</string>
-    <string name="ctrl_mapping_lede">Définissez l\'entrée que chaque bouton à l\'écran envoie au jeu. « Masquer » supprimera ce bouton.</string>
+    <string name="ctrl_mapping_lede">Définissez l\'entrée que chaque bouton envoie au jeu, à l\'écran comme sur la manette. « Masquer » supprime le bouton à l\'écran. Dans une session Steam, la manette suit Steam Input.</string>
     <string name="ctrl_onscreen_buttons">Boutons à l\'écran</string>
     <string name="ctrl_defaults">Valeurs par défaut</string>
     <string name="ctrl_reset_mapping">Réinitialiser le mappage</string>
@@ -777,6 +777,19 @@
     <string name="games_play_steam">Lancer Steam</string>
     <string name="games_launch_settings">Paramètres de lancement</string>
     <string name="games_launch">Lancer</string>
+    <string name="desktop_mode_title">Mode Desktop</string>
+    <string name="desktop_mode_on">Activé · sans Steam</string>
+    <string name="desktop_mode_off">Désactivé</string>
+    <string name="desktop_mode_no_proton">Le mode Desktop a besoin d\'un Proton : installez-en un dans Configuration › Versions de Proton, ou lancez Steam une fois pour qu\'il télécharge le sien.</string>
+    <string name="game_options_title">Options du jeu</string>
+    <string name="game_options_card_hint">Exécutable, options de lancement</string>
+    <string name="game_options_exe">Exécutable</string>
+    <string name="game_options_desktop_mode">Mode Desktop</string>
+    <string name="game_options_launch">Options de lancement</string>
+    <string name="game_options_launch_hint">-windowed, ou VAR=1 %command% -arg</string>
+    <string name="game_options_game_folder">Démarrer dans le dossier du jeu</string>
+    <string name="game_options_game_folder_hint">Désactivé : le jeu démarre à côté de son exécutable, comme avec Steam.</string>
+    <string name="game_options_note">Les options de lancement et le dossier de démarrage s\'appliquent en mode Desktop. Pour un lancement via Steam, modifiez le raccourci dans Steam.</string>
     <string name="games_files">Fichiers du jeu</string>
     <string name="games_prefix">Préfixe Proton</string>
     <string name="games_saves_looking">Recherche des sauvegardes…</string>

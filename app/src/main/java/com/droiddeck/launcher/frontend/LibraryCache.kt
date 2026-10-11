@@ -28,6 +28,7 @@ object LibraryCache {
                 icon = o.file("icon"),
                 source = o.optString("source").ifEmpty { if (o.getString("library") == Library.ADDED) Library.ADDED else Library.SOURCE_STEAM },
                 storeId = o.optString("storeId").ifEmpty { null },
+                guestExe = o.optString("guestExe").takeIf { it.isNotEmpty() },
             )
         }
     }.getOrElse { e -> Log.w(TAG, "unreadable, ignored: ${e.message}"); emptyList() }
@@ -39,7 +40,8 @@ object LibraryCache {
                 JSONObject().put("appId", g.appId).put("name", g.name).put("library", g.library).put("gameId", g.gameId)
                     .put("lastPlayed", g.lastPlayed).putFile("art", g.art).putFile("hero", g.hero)
                     .putFile("gameFiles", g.gameFiles).putFile("protonPrefix", g.protonPrefix).putFile("icon", g.icon)
-                    .put("source", g.source).apply { g.storeId?.let { put("storeId", it) } },
+                    .put("source", g.source).apply { g.storeId?.let { put("storeId", it) } }
+                    .apply { g.guestExe?.let { put("guestExe", it) } },
             )
             val f = file(context)
             val tmp = File(f.path + ".tmp")

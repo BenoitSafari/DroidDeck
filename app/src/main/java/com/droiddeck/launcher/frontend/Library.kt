@@ -28,6 +28,8 @@ object Library {
         val source: String = SOURCE_STEAM,
         /** The store's own id for a store install; null otherwise. */
         val storeId: String? = null,
+        /** An added game's executable as the session sees it; null for a title the client owns. */
+        val guestExe: String? = null,
     ) {
         /** Decimal form used by Steam links and Android shortcuts, including unsigned shortcut ids. */
         val gameIdString: String get() = java.lang.Long.toUnsignedString(gameId)
@@ -169,6 +171,7 @@ object Library {
                 protonPrefix = protonPrefix(context, g.steamAppId?.toLong() ?: g.appId, libraries = roots),
                 icon = art.icon?.takeIf { it.extension.lowercase() != "ico" },
                 source = g.source, storeId = g.storeId,
+                guestExe = g.guestExe.takeIf { g.steamAppId == null },
             )
         }
 
@@ -214,8 +217,8 @@ object Library {
     /** The emulator's name for a program path from the rail ("ARMSX2"), or null. */
     fun nameForProgram(program: String?): String? =
         if (program == com.droiddeck.launcher.runtime.FlatpakManager.LAUNCHER || program == com.droiddeck.launcher.runtime.AppImageManager.LAUNCHER ||
-            program == com.droiddeck.launcher.runtime.UserApps.SCRIPT_LAUNCHER) {
-            com.droiddeck.launcher.session.SessionState.programArgs.firstOrNull()?.let { flatpakNames[it] ?: it.substringAfterLast('.') }
+            program == com.droiddeck.launcher.runtime.UserApps.SCRIPT_LAUNCHER || program == DesktopMode.LAUNCHER) {
+            com.droiddeck.launcher.session.SessionState.programArgs.firstOrNull { !it.startsWith("--") }?.let { flatpakNames[it] ?: it.substringAfterLast('.') }
         } else specs.firstOrNull { it.program == program }?.name
 
     /** Added apps' names by Flatpak id or directory, as launched: the session only knows that. */

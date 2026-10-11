@@ -689,8 +689,10 @@ class SessionService : Service() {
         // changes what games do and leaves the client alone. The microphone is its own opt-in on
         // top, and the helper only opens an input stream when asked - so a user who wants game
         // sound but no recording gets exactly that, and Android's recording indicator stays off.
-        // The desktop starts Windows programs through the same Proton wrappers (droiddeck-proton-run).
-        val wantsDirectAudio = (SessionState.mode == MODE_STEAM || SessionState.mode == MODE_DESKTOP) &&
+        // The desktop starts Windows programs through the same Proton wrappers (droiddeck-proton-run),
+        // and so does a Desktop Mode game.
+        val desktopModeGame = SessionState.mode == MODE_RUN && SessionState.program == com.droiddeck.launcher.frontend.DesktopMode.LAUNCHER
+        val wantsDirectAudio = (SessionState.mode == MODE_STEAM || SessionState.mode == MODE_DESKTOP || desktopModeGame) &&
             SessionPrefs.directAudio(this)
         val wantsMic = SessionPrefs.micEnabled(this) &&
             checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED

@@ -436,6 +436,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         bridge.setSelectSteam(ControllerPrefs.read(this).selectSteam)
         padBridge = bridge
         SessionState.padBridge = bridge
+        bridge.setPhysicalMapping(ControllerPrefs.read(this).mapping)
         // A paired Steam Controller is read over Bluetooth LE, out of lizard mode, as Steam Link reads it.
         SteamControllerBle.listener = { uiHandler.post { updatePadMotion(); updateOnScreenControls() } }
         steamController = SteamControllerBle(this).also { it.start() }
@@ -850,6 +851,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
     private fun updateControllerPrefs(change: () -> Unit) {
         change()
         controllerSettings = ControllerPrefs.read(this)
+        padBridge?.setPhysicalMapping(controllerSettings?.mapping)
         onScreenControls?.reload()
     }
 
@@ -2504,6 +2506,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         if (SessionState.guestPid > 1) padBridge?.syncConnectedControllers()
         onScreenControls?.reload()
         controllerSettings = ControllerPrefs.read(this)
+        padBridge?.setPhysicalMapping(controllerSettings?.mapping)
         updateOnScreenControls()
         resumed = true
         updatePointerCapture()
